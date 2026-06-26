@@ -1,0 +1,38 @@
+# Python bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Databases
+data/safety_monitor.db
+data/**/*.db
+*.db
+
+# AI Weights & Models
+*.pt
+*.pth
+data/weights/
+yolov8n.pt
+
+# Captured Media & Snapshots
+data/events/
+data/**/*.jpg
+data/**/*.png
+backend/static/events/
+
+# Node Modules & Build Artifacts
+node_modules/
+dist/
+.eslintcache
+frontend/node_modules/
+frontend/dist/
+
+# Local Environments & IDEs
+.env
+.env.local
+.env.*
+.vscode/
+.idea/
+*.suo
+*.swp
+Thumbs.db

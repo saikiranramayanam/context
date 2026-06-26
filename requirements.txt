@@ -1,0 +1,14 @@
+opencv-python
+opencv-python-headless
+ultralytics
+mediapipe
+Flask
+numpy
+scipy
+torch
+torchvision
+fastapi
+uvicorn
+sqlalchemy
+websockets
+pydantic
