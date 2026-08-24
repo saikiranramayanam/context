@@ -46,6 +46,8 @@ def create_camera(camera: CameraCreate, db: Session = Depends(get_db)):
     db.refresh(db_camera)
     return db_camera
 
+from backend.routers.stream import stop_stream
+
 @router.put("/{camera_id}", response_model=CameraResponse)
 def update_camera(camera_id: int, camera: CameraCreate, db: Session = Depends(get_db)):
     db_camera = db.query(models.Camera).filter(models.Camera.id == camera_id).first()
@@ -62,6 +64,8 @@ def update_camera(camera_id: int, camera: CameraCreate, db: Session = Depends(ge
     db_camera.zone_max_y = camera.zone_max_y
     db.commit()
     db.refresh(db_camera)
+    
+    stop_stream(camera_id)
     return db_camera
 
 @router.delete("/{camera_id}")
@@ -72,4 +76,7 @@ def delete_camera(camera_id: int, db: Session = Depends(get_db)):
     
     db.delete(db_camera)
     db.commit()
+    
+    stop_stream(camera_id)
     return {"message": "Camera deleted successfully"}
+

@@ -12,6 +12,22 @@ router = APIRouter(prefix="/ws", tags=["stream"])
 # Active camera streams manager
 # { camera_id: { "pipeline": SafetyPipeline, "clients": set(WebSocket), "task": asyncio.Task } }
 active_streams = {}
+stream_lock = asyncio.Lock()
+
+def stop_stream(camera_id: int):
+    """Stop active stream and clean up pipeline for given camera_id."""
+    stream = active_streams.get(camera_id)
+    if stream:
+        task = stream.get("task")
+        if task and not task.done():
+            task.cancel()
+        pipeline = stream.get("pipeline")
+        if pipeline:
+            try:
+                pipeline.cleanup()
+            except Exception as e:
+                print(f"Error cleaning up pipeline for camera {camera_id}: {e}")
+        active_streams.pop(camera_id, None)
 
 async def broadcast_camera_feed(camera_id: int):
     """
@@ -93,33 +109,39 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int):
         await websocket.close(code=4003, reason="Camera is inactive")
         return
 
-    # Check if stream already exists
-    if camera_id not in active_streams:
-        try:
-            pipeline = SafetyPipeline(
-                camera_id=camera.id,
-                name=camera.name,
-                source=camera.source,
-                threshold=camera.threshold if camera.threshold is not None else 70.0,
-                zone_min_x=camera.zone_min_x if camera.zone_min_x is not None else 0.0,
-                zone_min_y=camera.zone_min_y if camera.zone_min_y is not None else 0.0,
-                zone_max_x=camera.zone_max_x if camera.zone_max_x is not None else 1.0,
-                zone_max_y=camera.zone_max_y if camera.zone_max_y is not None else 1.0
-            )
-            active_streams[camera_id] = {
-                "pipeline": pipeline,
-                "clients": {websocket},
-                "task": None
-            }
-            # Start background task
-            task = asyncio.create_task(broadcast_camera_feed(camera_id))
-            active_streams[camera_id]["task"] = task
-        except Exception as e:
-            print(f"Failed to start pipeline for camera {camera_id}: {e}")
-            await websocket.close(code=4005, reason="Failed to start video source")
-            return
-    else:
-        active_streams[camera_id]["clients"].add(websocket)
+    async with stream_lock:
+        # If camera_id has an abandoned stream with no clients, stop it first
+        if camera_id in active_streams and not active_streams[camera_id]["clients"]:
+            stop_stream(camera_id)
+            await asyncio.sleep(0.2)
+
+        # Check if stream already exists
+        if camera_id not in active_streams:
+            try:
+                pipeline = SafetyPipeline(
+                    camera_id=camera.id,
+                    name=camera.name,
+                    source=camera.source,
+                    threshold=camera.threshold if camera.threshold is not None else 70.0,
+                    zone_min_x=camera.zone_min_x if camera.zone_min_x is not None else 0.0,
+                    zone_min_y=camera.zone_min_y if camera.zone_min_y is not None else 0.0,
+                    zone_max_x=camera.zone_max_x if camera.zone_max_x is not None else 1.0,
+                    zone_max_y=camera.zone_max_y if camera.zone_max_y is not None else 1.0
+                )
+                active_streams[camera_id] = {
+                    "pipeline": pipeline,
+                    "clients": {websocket},
+                    "task": None
+                }
+                # Start background task
+                task = asyncio.create_task(broadcast_camera_feed(camera_id))
+                active_streams[camera_id]["task"] = task
+            except Exception as e:
+                print(f"Failed to start pipeline for camera {camera_id}: {e}")
+                await websocket.close(code=4005, reason="Failed to start video source")
+                return
+        else:
+            active_streams[camera_id]["clients"].add(websocket)
         
     # Listen to WebSocket client disconnect
     try:
@@ -134,6 +156,4 @@ async def websocket_endpoint(websocket: WebSocket, camera_id: int):
             active_streams[camera_id]["clients"].discard(websocket)
             # If no clients left, cancel task to clean up pipeline
             if not active_streams[camera_id]["clients"]:
-                task = active_streams[camera_id]["task"]
-                if task:
-                    task.cancel()
+                stop_stream(camera_id)

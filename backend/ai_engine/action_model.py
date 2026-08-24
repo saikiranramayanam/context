@@ -52,7 +52,7 @@ class BehaviorAnalyzer:
         
         kps = []
         for idx in self.landmark_indices:
-            if landmarks and idx < len(landmarks):
+            if landmarks and idx < len(landmarks) and landmarks[idx] is not None:
                 abs_x, abs_y, vis = landmarks[idx]
                 norm_x = (abs_x - x1) / w if w > 0 else 0
                 norm_y = (abs_y - y1) / h if h > 0 else 0
@@ -118,8 +118,15 @@ class BehaviorAnalyzer:
             max_risk = max(max_risk, person_risk)
 
         # Proximity check
-        for t1, t2, dist in proximities:
-            if dist < 120:
+        for item in proximities:
+            if len(item) >= 4:
+                t1, t2, dist, norm_dist = item[:4]
+                is_close = norm_dist < 0.15
+            else:
+                t1, t2, dist = item[:3]
+                is_close = dist < 120
+
+            if is_close:
                 max_risk = max(max_risk, 40.0)
                 alerts.append(f"Person {t1} and Person {t2} are dangerously close ({dist:.1f}px).")
                 

@@ -7,10 +7,17 @@ const CameraGrid = ({ cameras, selectedCameraId, setSelectedCameraId }) => {
   const wsRef = useRef(null);
   const [muteAlarm, setMuteAlarm] = useState(true);
   const audioContextRef = useRef(null);
+  const activeCamera = cameras.find(c => c.id === selectedCameraId) || cameras[0];
+  const activeCameraId = activeCamera?.id;
+
+  const muteAlarmRef = useRef(muteAlarm);
+  useEffect(() => {
+    muteAlarmRef.current = muteAlarm;
+  }, [muteAlarm]);
 
   // Play synthetic alarm sound on high risk if not muted
   const playAlarmSound = (frequency = 880, duration = 0.15) => {
-    if (muteAlarm) return;
+    if (muteAlarmRef.current) return;
     try {
       if (!audioContextRef.current) {
         audioContextRef.current = new (window.AudioContext || window.webkitAudioContext)();
@@ -34,10 +41,8 @@ const CameraGrid = ({ cameras, selectedCameraId, setSelectedCameraId }) => {
     }
   };
 
-  const activeCamera = cameras.find(c => c.id === selectedCameraId) || cameras[0];
-
   useEffect(() => {
-    if (!activeCamera) return;
+    if (!activeCameraId) return;
 
     setWsStatus('connecting');
     setStreamData(null);
@@ -49,7 +54,7 @@ const CameraGrid = ({ cameras, selectedCameraId, setSelectedCameraId }) => {
 
     // Connect to WebSocket stream
     const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/stream/${activeCamera.id}`;
+    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/stream/${activeCameraId}`;
     
     const ws = new WebSocket(wsUrl);
     wsRef.current = ws;
@@ -80,7 +85,7 @@ const CameraGrid = ({ cameras, selectedCameraId, setSelectedCameraId }) => {
         wsRef.current.close();
       }
     };
-  }, [activeCamera, muteAlarm]);
+  }, [activeCameraId]);
 
   const riskScore = streamData?.risk_score || 0;
   const isHighRisk = riskScore >= 70.0;

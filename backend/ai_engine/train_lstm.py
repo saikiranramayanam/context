@@ -28,7 +28,7 @@ def generate_synthetic_data(num_samples=150, seq_len=30, num_features=36):
         base_pose = np.zeros(num_features)
         
         # x coordinates: left joints are around 0.4, right joints around 0.6
-        base_pose[0::3] = np.random.uniform(0.35, 0.45, size=(12,))
+        base_pose[0::6] = np.random.uniform(0.35, 0.45, size=(6,))
         base_pose[3::6] = np.random.uniform(0.55, 0.65, size=(6,))
         
         # y coordinates mapping
@@ -68,7 +68,7 @@ def generate_synthetic_data(num_samples=150, seq_len=30, num_features=36):
     for i in range(samples_per_class):
         seq = []
         base_pose = np.zeros(num_features)
-        base_pose[0::3] = np.random.uniform(0.35, 0.45, size=(12,))
+        base_pose[0::6] = np.random.uniform(0.35, 0.45, size=(6,))
         base_pose[3::6] = np.random.uniform(0.55, 0.65, size=(6,))
         base_pose[1] = 0.2
         base_pose[4] = 0.2
@@ -119,7 +119,7 @@ def generate_synthetic_data(num_samples=150, seq_len=30, num_features=36):
     for i in range(samples_per_class):
         seq = []
         base_pose = np.zeros(num_features)
-        base_pose[0::3] = np.random.uniform(0.35, 0.45, size=(12,))
+        base_pose[0::6] = np.random.uniform(0.35, 0.45, size=(6,))
         base_pose[3::6] = np.random.uniform(0.55, 0.65, size=(6,))
         base_pose[1] = 0.25
         base_pose[4] = 0.25
@@ -163,10 +163,11 @@ def train_model(save_path):
     X = X[indices]
     y = y[indices]
     
-    X_tensor = torch.tensor(X)
-    y_tensor = torch.tensor(y)
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    X_tensor = torch.tensor(X).to(device)
+    y_tensor = torch.tensor(y).to(device)
     
-    model = ActionLSTM()
+    model = ActionLSTM().to(device)
     criterion = nn.CrossEntropyLoss()
     optimizer = optim.Adam(model.parameters(), lr=0.005)
     

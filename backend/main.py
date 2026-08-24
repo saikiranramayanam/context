@@ -39,19 +39,23 @@ def startup_event():
     try:
         connection = engine.raw_connection()
         cursor = connection.cursor()
+        cursor.execute("PRAGMA table_info(cameras)")
+        existing_cols = [row[1] for row in cursor.fetchall()]
+        
         migrations = [
-            "ALTER TABLE cameras ADD COLUMN threshold FLOAT DEFAULT 70.0",
-            "ALTER TABLE cameras ADD COLUMN zone_min_x FLOAT DEFAULT 0.0",
-            "ALTER TABLE cameras ADD COLUMN zone_min_y FLOAT DEFAULT 0.0",
-            "ALTER TABLE cameras ADD COLUMN zone_max_x FLOAT DEFAULT 1.0",
-            "ALTER TABLE cameras ADD COLUMN zone_max_y FLOAT DEFAULT 1.0"
+            ("threshold", "ALTER TABLE cameras ADD COLUMN threshold FLOAT DEFAULT 70.0"),
+            ("zone_min_x", "ALTER TABLE cameras ADD COLUMN zone_min_x FLOAT DEFAULT 0.0"),
+            ("zone_min_y", "ALTER TABLE cameras ADD COLUMN zone_min_y FLOAT DEFAULT 0.0"),
+            ("zone_max_x", "ALTER TABLE cameras ADD COLUMN zone_max_x FLOAT DEFAULT 1.0"),
+            ("zone_max_y", "ALTER TABLE cameras ADD COLUMN zone_max_y FLOAT DEFAULT 1.0")
         ]
-        for sql in migrations:
-            try:
-                cursor.execute(sql)
-                connection.commit()
-            except Exception:
-                pass
+        for col_name, sql in migrations:
+            if col_name not in existing_cols:
+                try:
+                    cursor.execute(sql)
+                    connection.commit()
+                except Exception as e:
+                    print(f"Error adding column {col_name}: {e}")
         cursor.close()
         connection.close()
         print("Database schema migration checked.")

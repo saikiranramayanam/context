@@ -44,54 +44,61 @@ class SafetyPipeline:
             return None, 0.0, []
             
         h, w = frame.shape[:2]
+        
+        try:
+            # 1. Person Detection (YOLOv8)
+            detections = self.detector.detect(frame)
             
-        # 1. Person Detection (YOLOv8)
-        detections = self.detector.detect(frame)
-        
-        # 2. Tracking (DeepSORT)
-        tracked_objects = self.tracker.track(detections, frame)
-        
-        # Filter tracked objects by Hot Zone:
-        in_zone_objects = []
-        out_of_zone_objects = []
-        for obj in tracked_objects:
-            x1, y1, x2, y2 = obj['bbox']
-            cx = (x1 + x2) / 2
-            cy = (y1 + y2) / 2
-            norm_cx = cx / w if w > 0 else 0
-            norm_cy = cy / h if h > 0 else 0
+            # 2. Tracking (DeepSORT / Fallback)
+            tracked_objects = self.tracker.track(detections, frame)
             
-            if (self.zone_min_x <= norm_cx <= self.zone_max_x) and (self.zone_min_y <= norm_cy <= self.zone_max_y):
-                obj['in_zone'] = True
-                in_zone_objects.append(obj)
-            else:
-                obj['in_zone'] = False
-                obj['landmarks'] = None
-                out_of_zone_objects.append(obj)
-        
-        # 3. Pose Estimation (MediaPipe) - only for in-zone objects to optimize performance
-        objects_with_pose = self.pose_estimator.estimate(frame, in_zone_objects)
-        
-        # Merge back lists
-        all_objects = objects_with_pose + out_of_zone_objects
-        
-        # 4. Proximity Calculation (only between active in-zone people)
-        centers = {}
-        for obj in objects_with_pose:
-            x1, y1, x2, y2 = obj['bbox']
-            centers[obj['id']] = ((x1 + x2)/2, (y1 + y2)/2)
-            
-        proximities = []
-        tids = list(centers.keys())
-        for i in range(len(tids)):
-            for j in range(i+1, len(tids)):
-                t1, t2 = tids[i], tids[j]
-                c1, c2 = centers[t1], centers[t2]
-                dist = math.hypot(c1[0] - c2[0], c1[1] - c2[1])
-                proximities.append((t1, t2, dist))
+            # Filter tracked objects by Hot Zone:
+            in_zone_objects = []
+            out_of_zone_objects = []
+            for obj in tracked_objects:
+                x1, y1, x2, y2 = obj['bbox']
+                cx = (x1 + x2) / 2
+                cy = (y1 + y2) / 2
+                norm_cx = cx / w if w > 0 else 0
+                norm_cy = cy / h if h > 0 else 0
                 
-        # 5. Behavior Analysis (LSTM Action recognition on in-zone subjects + proximity)
-        risk_score, alerts = self.analyzer.analyze(objects_with_pose, proximities)
+                if (self.zone_min_x <= norm_cx <= self.zone_max_x) and (self.zone_min_y <= norm_cy <= self.zone_max_y):
+                    obj['in_zone'] = True
+                    in_zone_objects.append(obj)
+                else:
+                    obj['in_zone'] = False
+                    obj['landmarks'] = None
+                    out_of_zone_objects.append(obj)
+            
+            # 3. Pose Estimation (MediaPipe) - only for in-zone objects
+            objects_with_pose = self.pose_estimator.estimate(frame, in_zone_objects)
+            
+            # Merge back lists
+            all_objects = objects_with_pose + out_of_zone_objects
+            
+            # 4. Proximity Calculation (only between active in-zone people)
+            centers = {}
+            for obj in objects_with_pose:
+                x1, y1, x2, y2 = obj['bbox']
+                centers[obj['id']] = ((x1 + x2)/2, (y1 + y2)/2)
+                
+            proximities = []
+            tids = list(centers.keys())
+            for i in range(len(tids)):
+                for j in range(i+1, len(tids)):
+                    t1, t2 = tids[i], tids[j]
+                    c1, c2 = centers[t1], centers[t2]
+                    dist = math.hypot(c1[0] - c2[0], c1[1] - c2[1])
+                    norm_dist = dist / w if w > 0 else 0
+                    proximities.append((t1, t2, dist, norm_dist))
+                    
+            # 5. Behavior Analysis (LSTM Action recognition on in-zone subjects + proximity)
+            risk_score, alerts = self.analyzer.analyze(objects_with_pose, proximities)
+        except Exception as e:
+            print(f"[ERROR] Exception during pipeline step execution: {e}")
+            all_objects = []
+            risk_score = 0.0
+            alerts = []
         
         # 6. Render Overlays on display frame
         display_frame = frame.copy()

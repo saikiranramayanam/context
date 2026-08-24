@@ -1,41 +1,75 @@
 import cv2
 import threading
 import time
+import os
 
 class VideoCapture:
     def __init__(self, src=0):
-        # Convert src to int if it's a numeric string (e.g. "0")
         try:
             self.src = int(src)
         except ValueError:
             self.src = src
             
-        self.cap = cv2.VideoCapture(self.src)
-        self.ret, self.frame = self.cap.read()
-        self.running = True
+        self.lock = threading.Lock()
+        self.cap = None
+        self.ret = False
+        self.frame = None
         
-        # Start a background thread to read frames continuously to avoid buffer build-up
+        # Try standard VideoCapture first with retries if device was recently busy
+        max_retries = 3
+        for attempt in range(max_retries):
+            self.cap = cv2.VideoCapture(self.src)
+            if isinstance(self.src, int) and os.name == 'nt' and not self.cap.isOpened():
+                self.cap = cv2.VideoCapture(self.src, cv2.CAP_DSHOW)
+
+            if self.cap and self.cap.isOpened():
+                ret, frame = self.cap.read()
+                if ret and frame is not None:
+                    self.ret = ret
+                    self.frame = frame
+                    break
+                else:
+                    self.cap.release()
+                    self.cap = None
+            
+            if attempt < max_retries - 1:
+                time.sleep(0.3) # Wait for hardware driver to release on Windows
+
+        self.running = True
         self.thread = threading.Thread(target=self._update, daemon=True)
         self.thread.start()
 
     def _update(self):
         while self.running:
-            if self.cap.isOpened():
+            if self.cap and self.cap.isOpened():
                 ret, frame = self.cap.read()
-                if ret:
-                    self.ret = ret
-                    self.frame = frame
+                if ret and frame is not None:
+                    with self.lock:
+                        self.ret = ret
+                        self.frame = frame
                 else:
                     if isinstance(self.src, str):
                         self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
+                        ret_retry, frame_retry = self.cap.read()
+                        if ret_retry and frame_retry is not None:
+                            with self.lock:
+                                self.ret = ret_retry
+                                self.frame = frame_retry
                     time.sleep(0.01)
             else:
                 time.sleep(0.1)
 
     def read(self):
-        return self.ret, self.frame
+        with self.lock:
+            if self.frame is not None:
+                return self.ret, self.frame.copy()
+            return False, None
 
     def release(self):
         self.running = False
-        self.thread.join(timeout=1.0)
-        self.cap.release()
+        if self.thread and self.thread.is_alive():
+            self.thread.join(timeout=1.0)
+        if self.cap:
+            self.cap.release()
+            self.cap = None
+

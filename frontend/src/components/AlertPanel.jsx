@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Trash2, AlertTriangle, Eye, X } from 'lucide-react';
 
-const API_BASE = 'http://localhost:8000';
+const API_BASE = `http://${window.location.hostname}:8000`;
 
 const AlertPanel = ({ events, onDeleteAlert, onClearAll }) => {
   const [selectedImage, setSelectedImage] = useState(null);

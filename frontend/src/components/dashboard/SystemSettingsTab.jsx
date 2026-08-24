@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Settings, Plus, Camera } from 'lucide-react';
 import CameraCard from '../CameraCard';
 
-const API_BASE = 'http://localhost:8000/api';
+const API_BASE = `http://${window.location.hostname}:8000/api`;
 
 const SystemSettingsTab = ({ cameras, fetchCameras, fetchStats, onToggleActive, onDeleteCamera }) => {
   // Form states
