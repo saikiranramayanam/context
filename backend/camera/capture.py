@@ -49,12 +49,16 @@ class VideoCapture:
                         self.frame = frame
                 else:
                     if isinstance(self.src, str):
-                        self.cap.set(cv2.CAP_PROP_POS_FRAMES, 0)
-                        ret_retry, frame_retry = self.cap.read()
-                        if ret_retry and frame_retry is not None:
-                            with self.lock:
-                                self.ret = ret_retry
-                                self.frame = frame_retry
+                        # Re-open video file to loop seamlessly without freezing
+                        if self.cap:
+                            self.cap.release()
+                        self.cap = cv2.VideoCapture(self.src)
+                        if self.cap and self.cap.isOpened():
+                            ret_retry, frame_retry = self.cap.read()
+                            if ret_retry and frame_retry is not None:
+                                with self.lock:
+                                    self.ret = ret_retry
+                                    self.frame = frame_retry
                     time.sleep(0.01)
             else:
                 # If capture device was unavailable, periodically try reopening it
