@@ -57,7 +57,15 @@ class VideoCapture:
                                 self.frame = frame_retry
                     time.sleep(0.01)
             else:
-                time.sleep(0.1)
+                # If capture device was unavailable, periodically try reopening it
+                time.sleep(1.0)
+                if self.running:
+                    try:
+                        self.cap = cv2.VideoCapture(self.src)
+                        if isinstance(self.src, int) and os.name == 'nt' and not self.cap.isOpened():
+                            self.cap = cv2.VideoCapture(self.src, cv2.CAP_DSHOW)
+                    except Exception:
+                        pass
 
     def read(self):
         with self.lock:

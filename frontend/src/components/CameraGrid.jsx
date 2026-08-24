@@ -44,43 +44,65 @@ const CameraGrid = ({ cameras, selectedCameraId, setSelectedCameraId }) => {
   useEffect(() => {
     if (!activeCameraId) return;
 
-    setWsStatus('connecting');
-    setStreamData(null);
+    let isMounted = true;
+    let reconnectTimer = null;
 
-    // Close existing socket
-    if (wsRef.current) {
-      wsRef.current.close();
-    }
+    const connect = () => {
+      if (!isMounted) return;
+      setWsStatus('connecting');
 
-    // Connect to WebSocket stream
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/stream/${activeCameraId}`;
-    
-    const ws = new WebSocket(wsUrl);
-    wsRef.current = ws;
-
-    ws.onopen = () => {
-      setWsStatus('connected');
-    };
-
-    ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
-      setStreamData(data);
-      if (data.risk_score >= 70.0) {
-        playAlarmSound(980, 0.2);
+      // Close existing socket if any
+      if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) {
+        wsRef.current.close();
       }
+
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const wsUrl = `${protocol}//${window.location.hostname}:8000/ws/stream/${activeCameraId}`;
+      
+      const ws = new WebSocket(wsUrl);
+      wsRef.current = ws;
+
+      ws.onopen = () => {
+        if (isMounted) {
+          setWsStatus('connected');
+        }
+      };
+
+      ws.onmessage = (event) => {
+        if (!isMounted) return;
+        try {
+          const data = JSON.parse(event.data);
+          setStreamData(data);
+          if (data.risk_score >= 70.0) {
+            playAlarmSound(980, 0.2);
+          }
+        } catch (e) {
+          console.error("Error parsing WS message:", e);
+        }
+      };
+
+      ws.onerror = (err) => {
+        if (isMounted) {
+          setWsStatus('error');
+        }
+      };
+
+      ws.onclose = () => {
+        if (isMounted) {
+          setWsStatus('disconnected');
+          // Automatically retry connection after 2 seconds
+          reconnectTimer = setTimeout(() => {
+            connect();
+          }, 2000);
+        }
+      };
     };
 
-    ws.onerror = (err) => {
-      setWsStatus('error');
-      console.error("WS stream error:", err);
-    };
-
-    ws.onclose = () => {
-      setWsStatus('disconnected');
-    };
+    connect();
 
     return () => {
+      isMounted = false;
+      if (reconnectTimer) clearTimeout(reconnectTimer);
       if (wsRef.current) {
         wsRef.current.close();
       }
